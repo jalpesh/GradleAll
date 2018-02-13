@@ -1,0 +1,83 @@
+plugins {
+  id "com.eriwen.gradle.js" version "2.14.0"
+}
+
+repositories {
+    jcenter()
+}
+
+javascript.source {
+    custom {
+        js {
+            srcDir "src/test/resources"
+            include "*.js"
+            exclude "externs.js"
+        }
+    }
+}
+
+task clean(type: Delete) {
+    delete buildDir
+}
+
+// Combine JS files
+task combine(type: com.eriwen.gradle.js.tasks.CombineJsTask) {
+    source = javascript.source.custom.js.files
+    dest = "${buildDir}/all.js"
+}
+
+requireJs {
+    source = javascript.source.custom.js.files
+    dest = file("$buildDir/main.js")
+    requirejs.buildprofile = new File("src/test/resources/requirejs/build.js")
+}
+
+// Minify with Google Closure Compiler
+minifyJs {
+    dest = file("${buildDir}/all-min.js")
+    source = javascript.source.custom.js.files
+    closure {
+        warningLevel = 'VERBOSE'
+        compilationLevel = 'SIMPLE_OPTIMIZATIONS'
+        externs = files("src/test/resources/externs.js")
+    }
+}
+
+javascript.source.custom.js.files.eachWithIndex { jsFile, idx ->
+    tasks.create(name: "dominify${idx}", type: com.eriwen.gradle.js.tasks.MinifyJsTask) {
+        source = jsFile
+        dest = "${buildDir}/${jsFile.name}"
+    }
+}
+task individualMinify(dependsOn: tasks.matching { Task task -> task.name.startsWith("dominify")})
+
+// For auto-versioning
+//def version = Integer.toHexString(Integer.parseInt(new java.text.SimpleDateFormat('yyDDHHmm').format(new Date())))
+def version = "1.7.2"
+
+// GZip it!
+task gzip(type: com.eriwen.gradle.js.tasks.GzipJsTask) {
+    source = minifyJs
+    dest = "${buildDir}/all-${version}.min.js"
+}
+
+task jshintz(type: com.eriwen.gradle.js.tasks.JsHintTask) {
+    source = javascript.source.custom.js.files
+    dest = "${buildDir}/jshint.out"
+    ignoreExitCode = true
+    reporter = 'checkstyle'
+    jshint.options = [expr: "true", unused: "true"]
+    jshint.predef = ["exports": 1]
+}
+
+task jsdocz(type: com.eriwen.gradle.js.tasks.JsDocTask) {
+    source = javascript.source.custom.js.files
+    destinationDir = "${buildDir}/jsdoc"
+}
+
+task props(type: com.eriwen.gradle.js.tasks.Props2JsTask) {
+    source = file("${projectDir}/src/test/resources/test.properties")
+    dest = file("${buildDir}/props.jsonp")
+    project.props.type = 'jsonp'
+    project.props.functionName = 'fn'
+}
